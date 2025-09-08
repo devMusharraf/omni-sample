@@ -12,95 +12,110 @@ const sendNumbers = require("../models/sendNumbers.model");
 const { randomId } = require("../utils/randomId");
 const { ADMINID } = require("../utils/randomId");
 
+// createSending.js
 exports.createSending = async (req, res) => {
   try {
+    // ✅ Step 1: Extract user info & validate request body
     const { userId, parentId } = req.userInfo;
     const { error, value } = sendingSchema.validate(req.body);
-
-    if (error) return res.status(400).json({ message: error.message });
-
-    const baseMessageId = randomId();
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
 
     const { templateId, gatewayId } = value;
+    const baseMessageId = randomId();
 
+    // ✅ Step 2: Fetch template & gateway data
     const templateData = await getFromRedis(`${userId}:template`);
-    console.log(templateData, "templateData");
-
     const parentGatewayData = await getFromRedis(`${parentId}:gateway`);
-
-    const adminId = parentGatewayData[0].parentId;
+    const adminId = parentGatewayData[0]?.parentId || ADMINID;
 
     const selectedTemplate = await getTemplate(templateData, templateId);
-
     const typeMsg = selectedTemplate.messageType;
-    console.log(typeMsg, "messageType");
 
-    const numCount = validatePhoneNumbers(value.number, value.totalNo);
+    // ✅ Step 3: Validate numbers and group by country
+    const numbersInfo = await validatePhoneNumbers(value.number, value.totalNo);
+    const groupedByCountry = numbersInfo.reduce((acc, num) => {
+      const iso = num.country;
+      if (!acc[iso]) acc[iso] = [];
+      acc[iso].push(num.formatted);
+      return acc;
+    }, {});
 
-    const sender = await balanceDeduct(userId, typeMsg, numCount);
-    console.log(sender, "sender");
-    const senderParent = await balanceDeduct(parentId, typeMsg, numCount);
+    // ✅ Step 4: Initialize results
+    const createdSendNumbers = [];
+    let totalCampaignCost = 0;
 
-    if (parentId !== adminId) {
-      const superAdmin = await balanceDeduct(ADMINID, typeMsg, numCount);
-      console.log(superAdmin, "superrr");
-    }
+    // ✅ Step 5: Process each country group
+    for (const [countryIso, numbers] of Object.entries(groupedByCountry)) {
+      // Deduct balance for user
+      const { perMessageCost, totalCost } = await balanceDeduct(
+        userId,
+        typeMsg,
+        countryIso,
+        numbers.length
+      );
 
-    const Count = await sendMessage.create({
-      senderId: userId,
-      campaignName: value.campaignName,
-      number: Array.isArray(value.number)
-        ? value.number
-        : value.number.split(","),
-      templateId: value.templateId,
-      gatewayId: value.gatewayId,
-      numCount,
-      msgId: `${baseMessageId}`,
-      totalCost: sender.cost,
-      status: "pending",
-    });
+      totalCampaignCost += totalCost;
 
-    const numbersArray = value.number.split(",").map((num) => num.trim());
+      // Create sendMessage record (summary per country)
+      await sendMessage.create({
+        senderId: userId,
+        campaignName: value.campaignName,
+        number: numbers,
+        templateId,
+        gatewayId,
+        numCount: numbers.length,
+        msgId: baseMessageId,
+        totalCost,
+        status: "pending",
+      });
 
-    const createdNumbers = await Promise.all(
-      numbersArray.map((num, index) =>
-        sendNumbers.create({
-          senderId: userId,
-          campaignName: value.campaignName,
-          number: num,
-          templateId: value.templateId,
-          gatewayId: value.gatewayId,
-          msgId: `${baseMessageId}:${index + 1}`,
-          perMessageCost: sender.perMessageCost,
-          
-        })
-      )
-    );
+      // Create sendNumbers records (detailed per number)
+      const sendNumbersDocs = numbers.map((num, i) => ({
+        senderId: userId,
+        campaignName: value.campaignName,
+        number: num,
+        templateId,
+        gatewayId,
+        msgId: `${baseMessageId}:${countryIso}:${i + 1}`,
+        perMessageCost,
+        countryCode: countryIso,
+      }));
 
-    async function updateDeliveryStatus(msgId, status) {
-      if (!["sent", "delivered", "failed"].include(status)) {
-        throw new Error("Invalid Status");
+      const inserted = await sendNumbers.insertMany(sendNumbersDocs);
+      createdSendNumbers.push(
+        ...inserted.map(doc => ({
+          number: doc.number,
+          perMessageCost: doc.perMessageCost,
+          countryCode: doc.countryCode,
+        }))
+      );
+
+      // Deduct balances for parent and admin
+      await balanceDeduct(parentId, typeMsg, countryIso, numbers.length);
+      if (parentId !== adminId) {
+        await balanceDeduct(ADMINID, typeMsg, countryIso, numbers.length);
       }
 
-      return await sendMessage.findOneAndUpdate(
-        { msgId },
-        { status },
-        { new: true }
-      );
+      // Log transaction
+      await Transaction.create({
+        userId,
+        amount: totalCost,
+        type: "message sent",
+        createdAt: Date.now(),
+      });
     }
-    await updateDeliveryStatus(`${baseMessageId}:1`, "sent");
 
-    await Transaction.create({
-      userId,
-      amount: sender.cost,
-      type: "message sent",
-      createdAt: Date.now(),
+    // ✅ Step 6: Respond with clean JSON
+    return res.status(201).json({
+      message: "Sending created successfully",
+      totalCampaignCost,
+      createdSendNumbers,
     });
-
-    return res.status(201).json(createdNumbers);
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: error.message });
+  } catch (err) {
+    console.error("Error in createSending:", err);
+    return res.status(500).json({ message: err.message });
   }
 };
 

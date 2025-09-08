@@ -68,7 +68,6 @@ exports.templateValidator = Joi.object({
   text_variable: Joi.array()
     .optional()
     .error(new Error("text variable will be in array format")),
-
 });
 
 exports.messageValidator = Joi.object({
@@ -85,7 +84,7 @@ exports.messageValidator = Joi.object({
     .required()
     .error(new Error("Enter a valid channel name")),
   recipient: Joi.string().required().error(new Error("Enter recipient name")),
- 
+
   userId: Joi.string()
     .alphanum()
     .length(10)
@@ -98,46 +97,53 @@ exports.messageValidator = Joi.object({
     .error(new Error("Variables are compulsary")),
 });
 
-
 exports.gatewayValidator = Joi.object({
-  
-  
   gatewayName: Joi.string()
     .required()
     .messages({ "any.required": "Gateway name is required" }),
-  
-  
-  
-  price: Joi.array()
-    .items(
-      Joi.object({
-        textArea: Joi.number()
-          .required()
-          .messages({ "any.required": "Price for textArea is required" }),
-        text_variable: Joi.number()
-          .required()
-          .messages({ "any.required": "Price for text_variable is required" }),
-      })
-    )
-    .min(1)
-    .required()
-    .messages({ "array.min": "At least one price entry is required" }),
-  
- 
-  
+
+// price: Joi.array()
+//   .items(
+//     Joi.object({
+//       country: Joi.object({
+//         textArea: Joi.number()
+//           .required()
+//           .messages({ "any.required": "Price for textArea is required" }),
+//         text_variable: Joi.number()
+//           .required()
+//           .messages({ "any.required": "Price for text_variable is required" }),
+//       }).required()
+//     })
+//   )
+//   .min(1)
+//   .required()
+//   .messages({ "array.min": "At least one price entry is required" }),
+
+
   service: Joi.array()
     .items(Joi.string())
-    .default([]).error(new Error("Service are compulsary")),
+    .default([])
+    .error(new Error("Service are compulsary")),
 });
-
 
 exports.sendingSchema = Joi.object({
   userId: Joi.string(),
-  number:Joi.string().required(),
-  templateId: Joi.string().required().max(10).error(new Error("Enter a valid  templateId")),
-  gatewayId: Joi.string().required().max(10).error(new Error("Enter a valid gatewayId")),
-  totalNo: Joi.number().required().min(1).error(new Error("Enter the quantity of numbers")),
-  campaignName: Joi.string().required().error(new Error("Please enter the campaign name")),
+  number: Joi.string().required(),
+  templateId: Joi.string()
+    .required()
+    .max(10)
+    .error(new Error("Enter a valid  templateId")),
+  gatewayId: Joi.string()
+    .required()
+    .max(10)
+    .error(new Error("Enter a valid gatewayId")),
+  totalNo: Joi.number()
+    .required()
+    .min(1)
+    .error(new Error("Enter the quantity of numbers")),
+  campaignName: Joi.string()
+    .required()
+    .error(new Error("Please enter the campaign name")),
   senderId: Joi.string(),
-  msgId: Joi.string()
-})
+  msgId: Joi.string(),
+});

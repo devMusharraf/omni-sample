@@ -22,7 +22,7 @@ const { createSending, getSending } = require("../controllers/sendingController"
 
 
 // gateway routes
-router.post("/add-gateway", verifyToken, gatewayMiddleware, addGateway);
+router.post("/add-gateway", verifyToken, addGateway);
 router.get("/get-gateway", getAllGateway);
 router.get("/one-gateway/:gatewayId",verifyToken, getOneGateway);
 router.put("/edit-gateway/:gatewayId", gatewayMiddleware, editGateway);

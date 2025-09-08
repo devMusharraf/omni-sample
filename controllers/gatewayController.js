@@ -6,42 +6,15 @@ const { setKey, getKey, addToRedis, getFromRedis } = require("../config/redis");
 
 exports.addGateway = async (req, res) => {
   try {
-    const { userId: parentId  } = req.userInfo;
-
-
-
+    const { userId: parentId, userType } = req.userInfo;
     const { gatewayName, service, price, userId, gatewayId } = req.body;
-   
-    await Service.create({
-      userId,
-      service,
-    });
-    const newGateway = await Gateway.create({
-      gatewayName,
-      service,
-      price,
-      userId,
-      parentId,
-      gatewayId
-    });
-   
-const user =   await User.findOneAndUpdate(
-  { userId },
-  { service, gatewayId: newGateway.gatewayId }, 
-  { new: true } 
-);
-
- const parentGateway = await Gateway.findOne({userId: parentId})
- const adminGateway = await Gateway.findOne({userId: parentGateway.parentId})
-
- const userData =  await addToRedis(`${userId}:gateway`, newGateway);
-const parentData = await addToRedis(`${parentId}:gateway`, parentGateway)
-
- const adminData = await addToRedis(`${parentGateway.parentId}:gateway`, adminGateway)
-
- 
-    return res.status(201).json(newGateway);
-    
+  const u = await User.findOne({userId})
+    const data = await Gateway.create({ gatewayName, service, price, userId, parentId, gatewayId, userType: u.userType});
+    const user = await User.findOneAndUpdate({ userId }, { service, gatewayId: data.gatewayId }, { new: true });
+    const parentGateway = await Gateway.findOne({ userId: parentId });
+    const adminGateway = await Gateway.findOne({userId: parentGateway.parentId});
+    const redisData = await addToRedis(`${userId}:gateway`,JSON.stringify(data));
+    return res.status(201).json(data);
   } catch (error) {
     console.log(error);
     return res.status(500).json({ message: error.message });
@@ -61,18 +34,17 @@ exports.getAllGateway = async (req, res) => {
 exports.getOneGateway = async (req, res) => {
   try {
     const { userId } = req.userInfo;
-   
+
     const { gatewayId } = req.params;
-    
+
     const gateway = await Gateway.findOne({ gatewayId });
     if (!gateway) throw new Error("gateway not found");
-   
 
     const data = await getKey(`gateway:${userId}`);
-    console.log(data)
-    
+    console.log(data);
+
     if (data) {
-      console.log("data is coming from redis", data)
+      console.log("data is coming from redis", data);
       return res.status(200).json(data);
     } else {
       return res.status(200).json(gateway);

@@ -107,7 +107,7 @@ exports.messageMiddleware = async (req, res, next) => {
 exports.gatewayMiddleware = async (req, res, next) => {
 const gatewayPayload = {
   gatewayName: req.body.gatewayName,
-  price: req.body.price,
+  // price: req.body.price,
   service: req.body.service
 
 }

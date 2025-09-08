@@ -6,6 +6,7 @@ const gatewaySchema = new mongoose.Schema({
     type: String,
     default: "",
   },
+  userType: String,
   gatewayName: String,
   gatewayId: {
     type: String,
@@ -13,26 +14,30 @@ const gatewaySchema = new mongoose.Schema({
   },
   price: {
     type: Array,
-    default : [,
-       { textArea: 0,
-        text_variable: 0}
-    ]
+    default: [
+      {
+        country: {
+          textArea: { type: Number, default: 0 },
+          text_variable: { type: Number, default: 0 },
+        },
+      },
+    ],
   },
+
   parentId: {
     type: String,
-    default: ""
+    default: "",
   },
   createdAt: {
     type: Date,
-    default: Date.now()
+    default: Date.now(),
   },
   service: {
     type: Array,
-    default: []
+    default: [],
   },
-  country: String
 
 });
 
 const Gateway = mongoose.model("Gateway", gatewaySchema);
-module.exports = Gateway
+module.exports = Gateway;

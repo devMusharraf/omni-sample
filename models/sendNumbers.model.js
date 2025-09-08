@@ -26,6 +26,10 @@ const sendNumbersSchema = new mongoose.Schema({
   perMessageCost: {
     type: Number,
     default: "",
+  },
+  countryCode: {
+    type: String,
+    default:""
   }
   
 });

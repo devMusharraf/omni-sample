@@ -37,7 +37,7 @@ exports.createTemplate = async (req, res) => {
       previewMessage,
     });
 
-    await addToRedis(`${data.userId}:template`, data);
+    console.log(await addToRedis(`${userId}:template`, data), "----");
 
     // if (data) {
     //   if (userType === "Reseller") {
