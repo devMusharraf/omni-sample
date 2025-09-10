@@ -8,22 +8,24 @@ const balanceRoutes = require("./routes/balanceRoutes")
 const templateRoutes = require("./routes/templateRoutes")
 const uploadRoutes = require("./routes/uploadRoutes")
 const indexRoutes = require("./routes/indexRoutes")
-const main = require("./utils/redis")
+const rateLimiter = require("./middlewares/rateLimiter")
+
+
 app.use(express.json())
-
-
+app.use(rateLimiter)
+connectDB();
+const PORT = 6000;
 app.use("/", userRoutes)
 app.use("/", serviceRoutes)
 app.use("/", balanceRoutes)
 app.use("/", templateRoutes)
 app.use("/", uploadRoutes)
 app.use("/", indexRoutes)
-const PORT = 6000;
-connectDB();
-main
+
+
+
 
 
 app.listen(PORT, () => {
     console.log("Server is running")
 })
-

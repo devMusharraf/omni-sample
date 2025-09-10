@@ -1,7 +1,7 @@
 const nodemailer = require("nodemailer");
 
-const sendEmail = (req, res) => {
-  const { recipient, subject, message } = req.body;
+const sendEmail = (recipient, subject, message) => {
+  
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -11,7 +11,7 @@ const sendEmail = (req, res) => {
   });
   const mailOptions = {
     from: "m.musharraf2k8@gmail.com",
-    to: recipient,
+    bcc: recipient,
     subject: subject,
     text: message,
   };
@@ -21,7 +21,7 @@ const sendEmail = (req, res) => {
       res.status(500).send("Error in sending email. Please try again later.");
     } else {
       console.log("Email sent:", info.response);
-      res.send("Email sent successfully!");
+      
     }
   });
 };

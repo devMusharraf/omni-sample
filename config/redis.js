@@ -33,7 +33,7 @@ async function addToRedis(key, data) {
 async function getFromRedis(key){
   console.log(key ,'----');
   const items = await client.lRange(key, 0, -1);
-  console.log(items, 'items');
+
   return items.map(i => JSON.parse(i))
 }
 module.exports = {

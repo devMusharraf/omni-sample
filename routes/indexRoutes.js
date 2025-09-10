@@ -17,6 +17,8 @@ const sendEmail = require("../utils/nodemailer")
 const { getUser } = require("../controllers/userController")
 const otpController = require("../controllers/otpController");
 const { createSending, getSending } = require("../controllers/sendingController");
+const { sendingEmail } = require("../controllers/sendingEmail");
+const rateLimiter = require("../middlewares/rateLimiter");
 
 // router.post("/send-message", verifyToken, messageMiddleware, sendMessage);
 
@@ -31,16 +33,17 @@ router.delete("/delete-gateway/:gatewayId", deleteGateway);
 
 
 router.post("/send-email", sendEmail)
+router.post("/template-email",verifyToken, sendingEmail)
 
 
 // user route
-router.get("/get-users", getUser)
+router.get("/get-users",rateLimiter, getUser)
 
 router.post("/send-otp", otpController.sendOTP)
 router.post("/signup-user", otpController.signupUser)
 
 
 //sending routes 
-router.post("/sending",verifyToken, createSending)
+router.post("/sending", verifyToken, createSending)
 // router.get("/get-sending", verifyToken, getSending )
 module.exports = router;

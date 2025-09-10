@@ -146,4 +146,5 @@ exports.sendingSchema = Joi.object({
     .error(new Error("Please enter the campaign name")),
   senderId: Joi.string(),
   msgId: Joi.string(),
+  scheduledAt: Joi.boolean()
 });

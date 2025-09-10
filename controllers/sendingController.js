@@ -1,117 +1,54 @@
+// createSending.js
 const { sendingSchema } = require("../utils/validator");
-const User = require("../models/user.model");
-const Transaction = require("../models/transaction.model");
-const { setKey, getKey, getFromRedis, addToRedis } = require("../config/redis");
-const Gateway = require("../models/gateway.model");
-const balanceDeduct = require("../helpers/balanceDeduct");
-const gatewayPrice = require("../helpers/gatewayPrice");
+const { getFromRedis } = require("../config/redis");
 const getTemplate = require("../helpers/getTemplate");
 const validatePhoneNumbers = require("../helpers/validatePhoneNumbers");
 const sendMessage = require("../models/sendMessage.model");
-const sendNumbers = require("../models/sendNumbers.model");
-const { randomId } = require("../utils/randomId");
-const { ADMINID } = require("../utils/randomId");
+const { randomId, ADMINID } = require("../utils/randomId");
+const { sendToQueue } = require("../utils/rabbitmq");
 
-// createSending.js
 exports.createSending = async (req, res) => {
   try {
-    // ✅ Step 1: Extract user info & validate request body
     const { userId, parentId } = req.userInfo;
     const { error, value } = sendingSchema.validate(req.body);
-    if (error) {
-      return res.status(400).json({ message: error.message });
-    }
+    if (error) return res.status(400).json({ message: error.message });
 
     const { templateId, gatewayId } = value;
     const baseMessageId = randomId();
 
-    // ✅ Step 2: Fetch template & gateway data
+    // fetch template & gateway
     const templateData = await getFromRedis(`${userId}:template`);
     const parentGatewayData = await getFromRedis(`${parentId}:gateway`);
     const adminId = parentGatewayData[0]?.parentId || ADMINID;
 
     const selectedTemplate = await getTemplate(templateData, templateId);
-    const typeMsg = selectedTemplate.messageType;
 
-    // ✅ Step 3: Validate numbers and group by country
+    // validate numbers quickly (but no DB writes here)
     const numbersInfo = await validatePhoneNumbers(value.number, value.totalNo);
-    const groupedByCountry = numbersInfo.reduce((acc, num) => {
-      const iso = num.country;
-      if (!acc[iso]) acc[iso] = [];
-      acc[iso].push(num.formatted);
-      return acc;
-    }, {});
 
-    // ✅ Step 4: Initialize results
-    const createdSendNumbers = [];
-    let totalCampaignCost = 0;
+    // enqueue job for worker
+    const queue = await sendToQueue("processing_message", {
+      jobId: baseMessageId,
+      userId,
+      parentId,
+      adminId,
+      templateId,
+      gatewayId,
+      campaignName: value.campaignName,
+      totalNumbers: numbersInfo.length,
+      numbers: numbersInfo,
+      messageType: selectedTemplate.messageType,
+      
+    });
+    console.log(queue, "queue");
 
-    // ✅ Step 5: Process each country group
-    for (const [countryIso, numbers] of Object.entries(groupedByCountry)) {
-      // Deduct balance for user
-      const { perMessageCost, totalCost } = await balanceDeduct(
-        userId,
-        typeMsg,
-        countryIso,
-        numbers.length
-      );
+    // only insert a lightweight tracking record (status = queued)
 
-      totalCampaignCost += totalCost;
-
-      // Create sendMessage record (summary per country)
-      await sendMessage.create({
-        senderId: userId,
-        campaignName: value.campaignName,
-        number: numbers,
-        templateId,
-        gatewayId,
-        numCount: numbers.length,
-        msgId: baseMessageId,
-        totalCost,
-        status: "pending",
-      });
-
-      // Create sendNumbers records (detailed per number)
-      const sendNumbersDocs = numbers.map((num, i) => ({
-        senderId: userId,
-        campaignName: value.campaignName,
-        number: num,
-        templateId,
-        gatewayId,
-        msgId: `${baseMessageId}:${countryIso}:${i + 1}`,
-        perMessageCost,
-        countryCode: countryIso,
-      }));
-
-      const inserted = await sendNumbers.insertMany(sendNumbersDocs);
-      createdSendNumbers.push(
-        ...inserted.map(doc => ({
-          number: doc.number,
-          perMessageCost: doc.perMessageCost,
-          countryCode: doc.countryCode,
-        }))
-      );
-
-      // Deduct balances for parent and admin
-      await balanceDeduct(parentId, typeMsg, countryIso, numbers.length);
-      if (parentId !== adminId) {
-        await balanceDeduct(ADMINID, typeMsg, countryIso, numbers.length);
-      }
-
-      // Log transaction
-      await Transaction.create({
-        userId,
-        amount: totalCost,
-        type: "message sent",
-        createdAt: Date.now(),
-      });
-    }
-
-    // ✅ Step 6: Respond with clean JSON
+    // respond instantly
     return res.status(201).json({
-      message: "Sending created successfully",
-      totalCampaignCost,
-      createdSendNumbers,
+      message: "Sending job queued successfully",
+      jobId: baseMessageId,
+      totalNumbers: numbersInfo.length,
     });
   } catch (err) {
     console.error("Error in createSending:", err);

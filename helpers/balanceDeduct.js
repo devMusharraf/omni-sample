@@ -8,17 +8,7 @@ async function balanceDeduct(userId, messageType, countryIso, count) {
   if (!gatewayData || gatewayData.length === 0) {
     throw new Error(`No gateway found in Redis for user ${userId}`);
   }
-
-  console.log(gatewayData, "gateway data");
-  console.log("Looking for userId:", userId);
-  console.log(
-    "Available userIds:",
-    gatewayData.map((g) => g.userId)
-  );
-
   const selectedGateway = gatewayData.find((g) => g.userId === userId);
-  console.log(selectedGateway, "selected one");
-  console.log(selectedGateway?.price, "price object from redis");
 
   // ✅ find the price object for this ISO
   const countryObj = (selectedGateway.price || []).find(
