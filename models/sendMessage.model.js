@@ -21,7 +21,12 @@ const sendMessageSchema = new mongoose.Schema({
     type: String,
     enum: ["pending", "sent", "delivered", "failed", "scheduled"],
     default: "pending",
+  },
+  message: {
+    type: String,
+    default: ""
   }
+
 });
 
 module.exports = mongoose.model("sendMessage", sendMessageSchema);

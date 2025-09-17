@@ -19,6 +19,7 @@ const otpController = require("../controllers/otpController");
 const { createSending, getSending } = require("../controllers/sendingController");
 const { sendingEmail } = require("../controllers/sendingEmail");
 const rateLimiter = require("../middlewares/rateLimiter");
+const upload = require("../middlewares/upload")
 
 // router.post("/send-message", verifyToken, messageMiddleware, sendMessage);
 
@@ -44,6 +45,11 @@ router.post("/signup-user", otpController.signupUser)
 
 
 //sending routes 
-router.post("/sending", verifyToken, createSending)
+router.post("/sending", verifyToken, upload.single("file"), createSending)
+// router.post("/send", upload.single("numbersFile"), createSending);
 // router.get("/get-sending", verifyToken, getSending )
+
+
+
+
 module.exports = router;

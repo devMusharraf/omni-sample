@@ -2,85 +2,102 @@ const Template = require("../models/template.model");
 const { USERTYPEADMIN, ADMINID } = require("../utils/randomId");
 const User = require("../models/user.model");
 const { setKey, getKey, addToRedis, getFromRedis } = require("../config/redis");
+const fs = require("fs");
+const csv = require("csv-parser");
+const path = require("path");
 
 // C
 exports.createTemplate = async (req, res) => {
   try {
-    const { userType, parentId, userId } = req.userInfo;
-    console.log(userType);
-    const { messageType, textArea, text_variable } = req.body;
-    const targetUser = await User.findOne({ userId });
-    if (userType === USERTYPEADMIN || targetUser?.parentId === userId) {
-      throw new Error("you cannot send message for yourself");
+    const { parentId, userId } = req.userInfo;
+    const { messageType, textArea, variables, index } = req.body;
+
+    if (!messageType || !textArea) {
+      return res
+        .status(400)
+        .json({ error: "messageType and textArea are required" });
     }
 
-    let previewMessage;
-    if (messageType === "text_variable") {
-      if (!Array.isArray(text_variable) || text_variable.length === 0) {
-        throw new Error("Variable type message requires text_variable array");
+    if (!variables) {
+      return res.status(400).json({ error: "Variables mapping is required" });
+    }
+
+    let variableMapping;
+    try {
+      variableMapping = JSON.parse(variables);
+      if (!Array.isArray(variableMapping) || variableMapping.length === 0) {
+        throw new Error();
+      }
+    } catch {
+      return res
+        .status(400)
+        .json({ error: "Variables must be a valid JSON array" });
+    }
+
+    let text_variable = [];
+
+    // ---------------- Handle File Upload ----------------
+    if (req.file) {
+      const ext = path.extname(req.file.originalname).toLowerCase();
+      const rows = [];
+
+      if (ext === ".csv") {
+        await new Promise((resolve, reject) => {
+          fs.createReadStream(req.file.path)
+            .pipe(csv())
+            .on("data", (row) => rows.push(row))
+            .on("end", resolve)
+            .on("error", reject);
+        });
+      } else if (ext === ".xlsx" || ext === ".xls") {
+        const workbook = xlsx.readFile(req.file.path);
+        const sheetName = workbook.SheetNames[0];
+        const sheetRows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        rows.push(...sheetRows);
       }
 
-      previewMessage = textArea.replace(/\{\{(\d+)\}\}/g, (match, index) => {
-        const i = parseInt(index, 10) - 1;
-        return text_variable[i] || match;
+      text_variable = rows.map((row) => {
+        const mapped = {};
+        variableMapping.forEach((v) => {
+          mapped[v.name] = row[v.header] || "";
+        });
+        return mapped;
       });
-    } else {
-      previewMessage = textArea;
     }
-    const data = await Template.addTemplate({
-      messageType,
-      textArea,
 
-      text_variable: messageType === "text_variable" ? text_variable : [],
-      userId,
-      parentId: targetUser.parentId || "",
-      previewMessage,
+    // default values if no CSV
+    if (!Array.isArray(text_variable) || text_variable.length === 0) {
+      text_variable = [
+        variableMapping.reduce((acc, v) => ({ ...acc, [v.name]: "" }), {}),
+      ];
+    }
+
+    // ---------------- Generate Preview ----------------
+    let previewMessage = textArea.replace(/\{\{(\w+)\}\}/g, (match, name) => {
+      if (text_variable[index] && text_variable[index][name] !== undefined) {
+        return text_variable[index][name];
+      }
+      return match;
     });
 
-    console.log(await addToRedis(`${userId}:template`, data), "----");
+    const template = new Template({
+      messageType,
+      textArea,
+      variables: variableMapping,
+      text_variable,
+      previewMessage,
+      createdAt: new Date(),
+      userId,
+      parentId: parentId || null,
+    });
 
-    // if (data) {
-    //   if (userType === "Reseller") {
-    //     deductBalance = 7;
-    //     parentDeduct = 5;
-    //   }
-    //   if (userType === USERTYPEADMIN && targetUser.userType === "Child") {
-    //     deductBalance = 7;
-    //     parentDeduct = 3;
-    //   }
-    //   if (userType === USERTYPEADMIN && targetUser.userType === "Reseller") {
-    //     deductBalance = 5;
-    //     parentDeduct = 3;
-    //   }
+    await template.save();
+    await addToRedis(`${userId}:template`, template);
 
-    //   await User.findOneAndUpdate(
-    //     { userId },
-    //     { $inc: { balance: -deductBalance } }
-    //   );
-    //   if (ADMINID === targetUser.parentId) {
-    //     await User.findOneAndUpdate(
-    //       { userId: ADMINID },
-    //       { $inc: { balance: -3 } }
-    //     );
-    //   } else if (targetUser.parentId) {
-
-    //     await User.findOneAndUpdate(
-    //       { userId: targetUser.parentId },
-    //       { $inc: { balance: -parentDeduct } }
-    //     );
-    //   }
-
-    //   if (parentId && parentId !== ADMINID) {
-    //     await User.findOneAndUpdate(
-    //       { userId: parentId },
-    //       { $inc: { balance: -parentDeduct } }
-    //     );
-    //   }
-    // }
-    return res.status(201).json(data);
+    return res.status(201).json(template);
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: error.message });
+    console.error("Error in createTemplate:", error);
+    return res.status(500).json({ error: error.message });
   }
 };
 

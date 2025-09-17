@@ -3,15 +3,59 @@ const { sendingSchema } = require("../utils/validator");
 const { getFromRedis } = require("../config/redis");
 const getTemplate = require("../helpers/getTemplate");
 const validatePhoneNumbers = require("../helpers/validatePhoneNumbers");
-const sendMessage = require("../models/sendMessage.model");
 const { randomId, ADMINID } = require("../utils/randomId");
 const { sendToQueue } = require("../utils/rabbitmq");
+const fs = require("fs");
+const csv = require("csv-parser");
+const xlsx = require("xlsx");
+const multer = require("multer");
 
+// ================== CREATE SENDING ==================
 exports.createSending = async (req, res) => {
   try {
     const { userId, parentId } = req.userInfo;
+    let numbersString = "";
+
+    if (req.file) {
+      const mobileNumberHeader = req.body.mobileNumberHeader;
+      const numbers = [];
+
+      await new Promise((resolve, reject) => {
+        fs.createReadStream(req.file.path)
+          .pipe(csv())
+          .on("data", (row) => {
+            if (row[mobileNumberHeader]) {
+              numbers.push(row[mobileNumberHeader].trim());
+            }
+          })
+          .on("end", resolve)
+          .on("error", reject);
+      });
+
+      if (numbers.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "CSV file contains no numbers" });
+      }
+
+      numbersString = numbers.join(","); // ✅ single string
+      req.body.totalNo = numbers.length;
+    }
+
+    // validate request body schema
     const { error, value } = sendingSchema.validate(req.body);
     if (error) return res.status(400).json({ message: error.message });
+
+    let { variables } = req.body;
+    if (typeof variables === "string") {
+      try {
+        variables = JSON.parse(variables); // support form-data stringified JSON
+      } catch {
+        return res
+          .status(400)
+          .json({ message: "variables must be valid JSON" });
+      }
+    }
 
     const { templateId, gatewayId } = value;
     const baseMessageId = randomId();
@@ -23,8 +67,25 @@ exports.createSending = async (req, res) => {
 
     const selectedTemplate = await getTemplate(templateData, templateId);
 
-    // validate numbers quickly (but no DB writes here)
-    const numbersInfo = await validatePhoneNumbers(value.number, value.totalNo);
+    // merge variables into template text
+    if (variables) {
+      let finalMessage = selectedTemplate.textArea.replace(
+        /\{\{(\w+)\}\}/g,
+        (match, name) => {
+          return variables?.[name] !== undefined ? variables[name] : match;
+        }
+      );
+      selectedTemplate.previewMessage = finalMessage;
+    }
+    finalMessage = selectedTemplate.previewMessage
+
+    
+
+    // ✅ validate phone numbers
+    const numbersInfo = await validatePhoneNumbers(
+      numbersString,
+      value.totalNo
+    );
 
     // enqueue job for worker
     const queue = await sendToQueue("processing_message", {
@@ -38,35 +99,18 @@ exports.createSending = async (req, res) => {
       totalNumbers: numbersInfo.length,
       numbers: numbersInfo,
       messageType: selectedTemplate.messageType,
-      
+      message: finalMessage,
     });
-    console.log(queue, "queue");
+    console.log(finalMessage, "message");
 
-    // only insert a lightweight tracking record (status = queued)
-
-    // respond instantly
     return res.status(201).json({
       message: "Sending job queued successfully",
-      jobId: baseMessageId,
+      msgId: baseMessageId,
       totalNumbers: numbersInfo.length,
+      message: finalMessage,
     });
   } catch (err) {
     console.error("Error in createSending:", err);
     return res.status(500).json({ message: err.message });
   }
 };
-
-// exports.getSending = async (req, res) => {
-//   try {
-//     const { userId } = req.userInfo;
-//     const data = await getFromRedis(`sending:${userId}`);
-//     console.log(data, "data");
-//     if (data) {
-//       console.log("data from redis");
-//       return res.status(200).json(data);
-//     }
-//   } catch (error) {
-//     console.error(error);
-//     return res.status(500).json({ message: error.message });
-//   }
-// };

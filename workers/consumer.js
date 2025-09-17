@@ -10,7 +10,6 @@ const sendMessage = require("../models/sendMessage.model");
 const Transaction = require("../models/transaction.model");
 const { statsRecord } = require("../helpers/statsRecord");
 
-
 // 1. Connect MongoDB
 async function connectDB() {
   try {
@@ -40,11 +39,12 @@ async function processMessages(data) {
       campaignName,
       numbers,
       messageType,
- 
+      message
     } = data;
     console.log(numbers, "total numbers");
     const value = numbers.map((t) => t.formatted);
     console.log(value);
+   
 
     // Group numbers by country
     let groupedByCountry = {};
@@ -63,68 +63,67 @@ async function processMessages(data) {
     console.log("📊 Grouped by country:", groupedByCountry);
 
     let totalCampaignCost = 0;
-    if (scheduledAt === false) {
-      for (const [countryIso, nums] of Object.entries(groupedByCountry)) {
-        // Deduct balance
-        const { perMessageCost, totalCost } = await balanceDeduct(
-          userId,
-          messageType || "text",
-          countryIso,
-          nums.length
-        );
-        console.log(nums.length, "nums.length");
 
-        totalCampaignCost += totalCost;
-        console.log(
-          `💰 Deducted balance: totalCost=${totalCost}, perMessage=${perMessageCost}`
-        );
-        // Update summary
-        await sendMessage.create({
-          campaignName,
-          templateId,
-          gatewayId,
-          senderId: userId,
-          number: nums.join(","),
-          numCount: nums.length,
-          msgId: jobId,
-          totalCost: totalCampaignCost,
-          status: "sent",
-        });
-        console.log(sendMessage, "sendMessage");
-        // Insert per-number records
-        const sendNumbersDocs = nums.map((num, i) => ({
-          senderId: userId,
-          campaignName,
-          number: num,
-          templateId,
-          gatewayId,
-          msgId: `${jobId}:${countryIso}:${i + 1}`,
-          perMessageCost,
-          countryCode: countryIso,
-        }));
-        const updateRecord = await statsRecord(userId, countryIso);
-        console.log(updateRecord, "record");
-
-        await sendNumbers.insertMany(sendNumbersDocs);
-        console.log(`✅ Inserted ${nums.length} sendNumbers for ${countryIso}`);
-
-        // Log transaction
-        await Transaction.create({
-          userId,
-          amount: totalCost,
-          type: "message sent",
-          createdAt: Date.now(),
-        });
-
-        console.log(`📌 Transaction logged for ${countryIso}`);
-      }
-
-      console.log(
-        `🎉 Worker finished job: ${jobId}, totalCost=${totalCampaignCost}`
+    for (const [countryIso, nums] of Object.entries(groupedByCountry)) {
+      // Deduct balance
+      const { perMessageCost, totalCost } = await balanceDeduct(
+        userId,
+        messageType || "text",
+        countryIso,
+        nums.length
       );
+      console.log(nums.length, "nums.length");
+
+      totalCampaignCost += totalCost;
+      console.log(
+        `💰 Deducted balance: totalCost=${totalCost}, perMessage=${perMessageCost}`
+      );
+      // Update summary
+      await sendMessage.create({
+        campaignName,
+        templateId,
+        gatewayId,
+        senderId: userId,
+        number: nums.join(","),
+        numCount: nums.length,
+        msgId: jobId,
+        totalCost: totalCampaignCost,
+        status: "sent",
+        message: data.message
+
+      });
+      
+      // Insert per-number records
+      const sendNumbersDocs = nums.map((num, i) => ({
+        senderId: userId,
+        campaignName,
+        number: num,
+        templateId,
+        gatewayId,
+        msgId: `${jobId}:${countryIso}:${i + 1}`,
+        perMessageCost,
+        countryCode: countryIso,
+      }));
+      const updateRecord = await statsRecord(userId, countryIso);
+      console.log(updateRecord, "record");
+
+      await sendNumbers.insertMany(sendNumbersDocs);
+      console.log(`✅ Inserted ${nums.length} sendNumbers for ${countryIso}`);
+
+      // Log transaction
+      await Transaction.create({
+        userId,
+        amount: totalCost,
+        type: "message sent",
+        createdAt: Date.now(),
+      });
+
+      console.log(`📌 Transaction logged for ${countryIso}`);
     }
-   
- 
+
+    console.log(
+      `🎉 Worker finished job: ${jobId}, totalCost=${totalCampaignCost}`
+    );
   } catch (err) {
     console.error("❌ Error in processMessages:", err);
     throw err; // rethrow so RabbitMQ requeues
@@ -134,7 +133,6 @@ async function processMessages(data) {
 // 3. Start consuming
 consumeQueue("processing_message", async (data) => {
   try {
-
     await processMessages(data);
   } catch (err) {
     console.error("❌ Job failed, will be requeued:", err);

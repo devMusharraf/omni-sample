@@ -67,7 +67,8 @@ exports.templateMiddleware = async (req, res, next) => {
     messageType: req.body.messageType,
     textArea: req.body.textArea,
     isVariable: req.body.isVariable,
-    text_variable: req.body.text_variable
+    text_variable: req.body.text_variable,
+    vari: req.body.vari
   }
   const { error, value } = templateValidator.validate(templatePayload)
 

@@ -54,9 +54,8 @@ exports.balanceValidator = Joi.object({
 });
 
 exports.templateValidator = Joi.object({
-  messageType: Joi.string()
-    .required()
-    .error(new Error("Please enter a message Type")),
+  messageType: Joi.string(),
+   vari: Joi.string(),
   textArea: Joi.string()
     .min(2)
     .max(200)
@@ -102,23 +101,22 @@ exports.gatewayValidator = Joi.object({
     .required()
     .messages({ "any.required": "Gateway name is required" }),
 
-// price: Joi.array()
-//   .items(
-//     Joi.object({
-//       country: Joi.object({
-//         textArea: Joi.number()
-//           .required()
-//           .messages({ "any.required": "Price for textArea is required" }),
-//         text_variable: Joi.number()
-//           .required()
-//           .messages({ "any.required": "Price for text_variable is required" }),
-//       }).required()
-//     })
-//   )
-//   .min(1)
-//   .required()
-//   .messages({ "array.min": "At least one price entry is required" }),
-
+  // price: Joi.array()
+  //   .items(
+  //     Joi.object({
+  //       country: Joi.object({
+  //         textArea: Joi.number()
+  //           .required()
+  //           .messages({ "any.required": "Price for textArea is required" }),
+  //         text_variable: Joi.number()
+  //           .required()
+  //           .messages({ "any.required": "Price for text_variable is required" }),
+  //       }).required()
+  //     })
+  //   )
+  //   .min(1)
+  //   .required()
+  //   .messages({ "array.min": "At least one price entry is required" }),
 
   service: Joi.array()
     .items(Joi.string())
@@ -128,7 +126,7 @@ exports.gatewayValidator = Joi.object({
 
 exports.sendingSchema = Joi.object({
   userId: Joi.string(),
-  number: Joi.string().required(),
+  number: Joi.string(),
   templateId: Joi.string()
     .required()
     .max(10)
@@ -146,5 +144,6 @@ exports.sendingSchema = Joi.object({
     .error(new Error("Please enter the campaign name")),
   senderId: Joi.string(),
   msgId: Joi.string(),
-  scheduledAt: Joi.boolean()
+  mobileNumberHeader: Joi.string(),
+  variables: Joi.string(),
 });
